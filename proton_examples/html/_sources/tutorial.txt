@@ -139,6 +139,18 @@ the sender we create with an ``accepted()`` method defined on it. This
 will be called whenever a message sent by the sender is accepted by
 the remote peer.
 
+When sending a large number of messages, we need to consider whether
+the remote peer is able to handle them all. AMQP has a powerful flow
+control mechanism through which processes can limit the incoming flow
+of messages. If we implement a ``link_flow()`` method on our sender's
+handler, this will be called whenever the sender is allowed to send
+and will prevent messages building up due to the receivers inability
+to process them.
+
+Separating out the sending logic, extending it to send a given number
+of messages and incorporating the two handler methods just described
+we get:
+
 .. literalinclude:: simple_send.py
    :lines: 21-
    :linenos:
@@ -146,6 +158,10 @@ the remote peer.
 ============
 Reconnecting
 ============
+
+TODO: This shows a basic reconnect for the receiver. Need some backoff
+logic which requires some sort of support for timers in the event
+loop.
 
 .. literalinclude:: simple_recv_2.py
    :lines: 21-
@@ -155,13 +171,41 @@ Reconnecting
 Request/Response
 ================
 
-.. literalinclude:: client.py
-   :lines: 21-
-   :linenos:
+A common pattern is to send a request message and expect a response
+message in return. AMQP has special support for this pattern. Let's
+have a look at a simple example. We'll start with the 'server',
+i.e. the program that will process the request and send the
+response. Note that we are still using a broker in this example.
+
+Our server will provide a very simple service: it will respond with
+the body of the request converted to uppercase.
 
 .. literalinclude:: server.py
    :lines: 21-
    :linenos:
+
+The code here is not too different from the simple receiver example. When
+we receive a request however, we look at the reply-to address and
+create a sender for that over which to send the response. We'll cache
+the senders incase we get further requests wit the same reply-to.
+
+Now let's create a simple client to test this service out.
+
+.. literalinclude:: client.py
+   :lines: 21-
+   :linenos:
+
+As well as sending requests, we need to be able to get back the
+responses. We create a receiver for that (see line 8), but we don't
+specify an address, we set the dynamic option which tells the broker
+we are connected to to create a temporary address over which we can
+receive our responses.
+
+We need to use the address allocated by the broker as the reply_to
+address of our requests. To be notified when the broker has sent us
+back the address to use, we add an ``opened()`` method to our
+receiver's handler, and use that as the trigger to send our first
+request.
 
 
 
